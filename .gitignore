@@ -1,0 +1,45 @@
+# Build folders
+bin/
+obj/
+
+# Visual Studio
+.vs/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+*.csproj.user
+
+# VS Code
+.vscode/
+
+# Rider
+.idea/
+
+# Operating system files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# NuGet packages
+packages/
+*.nupkg
+
+# Local configuration and secrets
+appsettings.Development.json
+secrets.json
+
+# Python environments and cache
+venv/
+.venv/
+__pycache__/
+*.pyc
+
+# Machine-learning training output
+datasets/
+runs/
+train/
+valid/
+test/

@@ -1,0 +1,150 @@
+﻿@page "/scanner"
+@using Frugt_Grønt_Scanner.Services
+@using Frugt_Grønt_Scanner.Models
+@using Microsoft.AspNetCore.Components.Forms
+@inject CameraService cameraService
+@inject OnnxDetectorService detectorService
+
+<main class="page">
+    <section class="scanner">
+        <h1>🍎 Frugt og Grønt Scanner</h1>
+        <p>Tag eller vælg et billede, og få det analyseret lokalt</p>
+    </section>
+    
+    <section class="scan_card">
+        <h2>Scan Produkt</h2>
+        <p class="model">ONNX-modellen er gemt i Resources/Raw/best.onnx og kører lokalt på enheden ved hjælp af ONNX Runtime, uden behov for internetforbindelse.</p>
+
+        <div class="scan_actions">
+            <button class="primary" disabled="@_busy" @onclick="CapturePhotoAsync">📸 Tage Billede</button>
+            <button class="secondary" disabled="@_busy" @onclick="PickPhotoAsync">🖼️ Valg et billede</button>
+            <label class="file-label secondary">
+                Upload Fil
+                <InputFile OnChange="UploadPhotoAsync" accept="image/*"/>
+            </label>
+        </div>
+
+        @if(_busy)
+        {
+            <p><strong>Analysing image...</strong></p>
+        }
+        @if (!string.IsNullOrWhiteSpace(_error))
+        {
+            <div class="error_card">
+                <strong>Der opstod en fejl</strong>
+                <p>@_error</p>
+            </div>
+        }
+        @if(!string.IsNullOrWhiteSpace(_imageDataUrl))
+        {
+            <img class="preview" src="@_imageDataUrl" alt="Valgt produkt"/>
+        }
+    </section>
+
+    @if (_result != null)
+    {
+        <section class="detection_card">
+            <h2>Detection Results</h2>
+
+            @if (_result.DetectedItems.Any())
+            {
+                <div class="result_card">
+                    @foreach (var item in _result.DetectedItems)
+                    {
+                        <div class="metric">
+                            <span>ProduktNavn:</span>
+                            <strong>@item.Navn</strong>
+
+                            <span>ProduktKode:</span>
+                            <strong>@item.Kode</strong>
+
+                            <span>Type(Frugt eller Grønt):</span>
+                            <strong>@item.Type</strong>
+
+                            <span>Confidence/Sikkerhed:</span>
+                            <strong>@item.Confidence.ToString("P1")</strong>
+                        </div>
+                    }
+                </div>
+            }
+            else
+            {
+                <p class="error">@(_result.ErrorMessage ?? "Ingen produkter blev fundet")</p>
+            }
+        </section>
+    }
+</main>
+
+@code{
+    private bool _busy;
+    private string? _error;
+    private string? _imageDataUrl;
+    private DetectionResults? _result;
+
+    private async Task CapturePhotoAsync()
+    {
+        await AnalyzeAsync(() => cameraService.CapturePhotoAsync());
+    }
+    private async Task PickPhotoAsync()
+    {
+        await AnalyzeAsync(() => cameraService.PickPhotoAsync());
+    }
+    private async Task UploadPhotoAsync(InputFileChangeEventArgs e)
+    {
+        await AnalyzeAsync(async () =>
+        {
+            var file = e.File;
+            await using var source = file.OpenReadStream(maxAllowedSize: 15 * 1024 * 1024);
+            using var memory = new MemoryStream();
+            await source.CopyToAsync(memory);
+            return memory.ToArray();
+        });
+    }
+    private async Task AnalyzeAsync(Func<Task<byte[]?>> getImageBytes)
+    {
+        _busy = true;
+        _result = null;
+        _error = null;
+
+
+        try
+        {
+            await InvokeAsync(StateHasChanged);
+
+            var bytes = await getImageBytes();
+
+            if (bytes == null || bytes.Length == 0)
+            {
+                _error = "Der blev ikke valgt noget billede.";
+                return;
+            }
+
+            _imageDataUrl = $"data:image/jpeg;base64,{Convert.ToBase64String(bytes)}";
+            await InvokeAsync(StateHasChanged);
+
+            await using var stream = new MemoryStream(bytes);
+            _result = await detectorService.DetectAsync(stream);
+
+            if(_result == null)
+            {
+                _error = "Analysen returnerede intet resultat";
+                return;
+            }
+
+            if(!string.IsNullOrWhiteSpace(_result.ErrorMessage))
+            {
+                _error = _result.ErrorMessage;
+            }
+        }
+        catch(Exception ex)
+        {
+            _result = null;
+            _error = ex.Message;
+        }
+        finally
+        {
+            _busy = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+}
